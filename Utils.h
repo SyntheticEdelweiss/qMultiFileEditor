@@ -1,12 +1,11 @@
-#ifndef UTILS_H
-#define UTILS_H
-
-#include <QtCore/QDir>
-#include <QtCore/QString>
-#include <QtCore/QRegularExpression>
+#pragma once
 
 #include <functional>
 #include <type_traits>
+
+#include <QtCore/QDir>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QString>
 
 #ifdef under_cast
 #error "under_cast macro already defined somewhere before - resolve this manually"
@@ -177,5 +176,3 @@ static_assert(std::is_same<std::underlying_type<ActionTarget>::type, int>::value
     "underlying type of ActionTarget has to be compatible with QVariant::toInt() to store it in QComboBox::userData");
 static_assert(std::is_same<std::underlying_type<ActionType>::type, int>::value == true,
     "underlying type of ActionType has to be compatible with QVariant::toInt() to store it in QComboBox::userData");
-
-#endif // UTILS_H
