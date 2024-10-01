@@ -1,20 +1,12 @@
-#ifndef MULTIFILEEDITOR_H
-#define MULTIFILEEDITOR_H
+#pragma once
+
+#include <array>
+
+#include <QtCore/QDir>
 
 #include "Utils.h"
 #include "ui_MultiFileEditor.h"
 
-#include <functional>
-#include <stdexcept>
-#include <array>
-
-#include <QtCore/QDir>
-#include <QtCore/QHash>
-#include <QtCore/QSettings>
-#include <QtCore/QStringList>
-#include <QtCore/QTextStream>
-#include <QtWidgets/QFileDialog>
-#include <QtWidgets/QMessageBox>
 
 struct FileDirEntry
 {
@@ -70,5 +62,3 @@ private slots:
 private:
     Ui::MultiFileEditor *ui;
 };
-
-#endif // MULTIFILEEDITOR_H

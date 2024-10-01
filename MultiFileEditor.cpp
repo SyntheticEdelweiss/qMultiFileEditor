@@ -1,5 +1,14 @@
 #include "MultiFileEditor.h"
 
+#include <functional>
+
+#include <QtCore/QRegularExpression>
+#include <QtCore/QSettings>
+#include <QtCore/QTextStream>
+#include <QtWidgets/QFileDialog>
+#include <QtWidgets/QMessageBox>
+
+
 // #ifdef Q_OS_WIN
 // #include "aclapi.h" // https://stackoverflow.com/questions/5021645/qt-setpermissions-not-setting-permisions
 // #endif

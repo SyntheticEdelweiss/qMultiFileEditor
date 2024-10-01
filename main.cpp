@@ -1,7 +1,7 @@
-#include "MultiFileEditor.h"
-
 #include <QtCore/QTimer>
 #include <QtWidgets/QApplication>
+
+#include "MultiFileEditor.h"
 
 int main(int argc, char* argv[])
 {
