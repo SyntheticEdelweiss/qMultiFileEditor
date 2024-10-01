@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Icons/checkmark_error_16x16.png</file>
+        <file>Icons/checkmark_ok_16x16.png</file>
+        <file>Icons/file_12x15.png</file>
+        <file>Icons/file_question_12x15.png</file>
+        <file>Icons/folder_15x15.png</file>
+    </qresource>
+</RCC>
