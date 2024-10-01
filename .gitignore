@@ -1,0 +1,9 @@
+.qmake.stash
+*.pro.user*
+/moc
+/obj
+/bin
+/ui
+Makefile*
+.qtc*
+qrc_*.cpp
