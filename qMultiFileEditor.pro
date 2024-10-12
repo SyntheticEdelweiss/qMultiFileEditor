@@ -1,9 +1,3 @@
-#-------------------------------------------------
-#
-# Project created by QtCreator 2022-11-25T14:12:06
-#
-#-------------------------------------------------
-
 QT += \
     core    \
     gui     \
@@ -22,12 +16,14 @@ UI_DIR      = $$PWD/ui/
 DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
+        MulticolorDelegate.cpp \
         Utils.cpp \
         main.cpp \
         MultiFileEditor.cpp
 
 HEADERS += \
         MultiFileEditor.h \
+        MulticolorDelegate.h \
         Utils.h
 
 FORMS += \
