@@ -44,11 +44,11 @@ MultiFileEditor::MultiFileEditor(QWidget* parent)
     connect(ui->pushButton_reset,           &QPushButton::clicked, this, &MultiFileEditor::reset);
     connect(ui->pushButton_execute,         &QPushButton::clicked, this, &MultiFileEditor::execute);
     // TODO: optimize to omit excessive rechecking?
-    connect(ui->lineEdit_dirPath,     &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
+    connect(ui->lineEdit_dirPath,       &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_filePattern,   &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_searchFor,     &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_replaceWith,   &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
-    connect(ui->checkBox_isRegExpFilePattern,      &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
+    connect(ui->checkBox_isRegExpFilePattern,   &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
     connect(ui->checkBox_isRegExpSearchReplace, &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
 
     onActionCombosActivated();
@@ -119,6 +119,7 @@ void MultiFileEditor::getExistingDirectory()
         this, "Pick a directory", startingPath, QFileDialog::ShowDirsOnly);
     if (QDir(dirPath).exists())
         ui->lineEdit_dirPath->setText(dirPath);
+    emit ui->lineEdit_dirPath->editingFinished();
     return;
 }
 
@@ -275,7 +276,7 @@ void MultiFileEditor::fillPreset(const QString& presetName)
 {
     MFEPreset& preset = m_presetMap[presetName]; // TODO: safer to use .find() ?
     ui->comboBox_actionType->setCurrentIndex(ui->comboBox_actionType->findData(preset.actionType, Qt::UserRole));
-    ui->comboBox_actionTarget->currentData(ui->comboBox_actionTarget->findData(preset.actionTarget, Qt::UserRole));
+    ui->comboBox_actionTarget->setCurrentIndex(ui->comboBox_actionTarget->findData(preset.actionTarget, Qt::UserRole));
     ui->checkBox_isRecursive->setChecked(preset.isRecursive);
     ui->checkBox_isCaseSensitive->setChecked(preset.isCaseSensitive);
     ui->checkBox_isAutoconfirmExecute->setChecked(preset.isAutoconfirmExecute);
@@ -295,7 +296,7 @@ void MultiFileEditor::loadAllPresets()
     QSettings presetsFile(g_presetsPath, QSettings::IniFormat, this);
     QStringList presets = presetsFile.childGroups();
     std::sort(presets.begin(), presets.end());
-    for (const QString& curPresetName : presets)
+    for (const QString& curPresetName : qAsConst(presets))
     {
         presetsFile.beginGroup(curPresetName);
         MFEPreset& curPreset = m_presetMap[curPresetName];
@@ -438,7 +439,9 @@ void MultiFileEditor::execute()
                         }
                         else
                         {
-                            bool isOk = QDir(entryFileInfo.canonicalPath()).remove(entryFileInfo.fileName());
+                            QFile fileToRemove = entryFileInfo.canonicalFilePath();
+                            fileToRemove.setPermissions(QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther);
+                            const bool isOk = fileToRemove.remove();
                             if (isOk)
                             {
                                 ++fileSuccessCount;
@@ -963,13 +966,13 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
     {
         if (iter->isDir())
         {
-            removeDirRecursively(iter->canonicalPath());
+            removeDirRecursively(iter->canonicalFilePath());
         }
         else
         {
-//            #ifdef Q_OS_WIN // https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights
-//            SetNamedSecurityInfoA(entry.absoluteFilePath(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, NULL, NULL);
-//            #endif
+#ifdef Q_OS_WIN // https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights
+            // SetNamedSecurityInfoA(entry.absoluteFilePath(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, NULL, NULL);
+#endif
             QFile fileToRemove(iter->canonicalFilePath());
             // If fails on Windows, check https://doc.qt.io/qt-5.15/qfileinfo.html#ntfs-permissions
             fileToRemove.setPermissions(QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther);
