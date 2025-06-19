@@ -35,11 +35,15 @@ private:
 
     QHash<QString, MFEPreset> m_presetMap;
 
+    bool isRecursive = false;
+    bool isHighlight = false;
+    Qt::CaseSensitivity caseSensitivity = Qt::CaseInsensitive;
+
 private:
-    QTreeWidgetItem* searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, bool isRecursive);
-    QTreeWidgetItem* searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceString, bool isRecursive);
-    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString, bool isRecursive);
-    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString, bool isRecursive, Qt::CaseSensitivity caseSensitivity);
+    QTreeWidgetItem* searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp);
+    QTreeWidgetItem* searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceString);
+    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString);
+    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString);
     bool removeDirRecursively(QDir targetDir);
 
 private slots:
@@ -54,10 +58,13 @@ private slots:
     void savePreset();
     void removePreset();
     void fillPreset(const QString& presetName);
+    void loadSettings();
     void loadAllPresets();
 
     void reset();
     void execute();
+
+    void closeEvent(QCloseEvent* event) final;
 
 private:
     Ui::MultiFileEditor *ui;

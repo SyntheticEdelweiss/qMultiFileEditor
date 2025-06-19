@@ -2,6 +2,10 @@
 
 #include <QtGui/QPainter>
 
+
+
+
+
 #define HORIZONTAL_MARGIN style->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, nullptr) + 1
 
 const int minimumLineNumberDigits = 6;
@@ -21,7 +25,7 @@ void MulticolorDelegate::paint(QPainter* painter, const QStyleOptionViewItem& op
 
     painter->save();
 
-    const ColoredText coloredText = index.data(Qt::UserRole).value<MulticolorDelegate::ColoredText>();
+    const ColoredText coloredText = index.data(Qt::UserRole).value<ColoredText>();
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
     QStyle* style = opt.widget->style();
@@ -140,12 +144,12 @@ void MulticolorDelegate::drawText(QPainter* painter, const QStyleOptionViewItem&
     QString resultText = fontMetrics.elidedText(coloredText.text, Qt::ElideRight, textRect.width());
     QRect curRect;
     const QColor defaultTextColor = option.palette.color((option.state & QStyle::State_Selected) ? QPalette::HighlightedText : QPalette::Text);
-    for (const TextSegmentParameters& segment : coloredText.segments)
+    for (const ColoredSegment& segment : coloredText.segments)
     {
-        if (segment.index >= resultText.length())
+        if (segment.indexStart >= resultText.length())
             break;
 
-        QString curText = resultText.mid(segment.index, segment.length);
+        QString curText = resultText.mid(segment.indexStart, segment.length);
         int curTextWidth = fontMetrics.horizontalAdvance(curText);
         curRect = QRect(textRect.topLeft(), QSize(curTextWidth, textRect.height()));
         painter->setPen(segment.textColor.isValid() ? segment.textColor : defaultTextColor);
@@ -400,12 +404,12 @@ void MulticolorDelegateV2::drawText(QPainter* painter, const QStyleOptionViewIte
     QString resultText = fontMetrics.elidedText(coloredText.text, Qt::ElideRight, textRect.width());
     const QColor defaultTextColor = option.palette.color((option.state & QStyle::State_Selected) ? QPalette::HighlightedText : QPalette::Text);
     QRect curRect;
-    for (const TextSegmentParameters& segment : coloredText.segments)
+    for (const ColoredSegment& segment : coloredText.segments)
     {
-        if (segment.index >= resultText.length())
+        if (segment.indexStart >= resultText.length())
             break;
 
-        QString curText = resultText.mid(segment.index, segment.length);
+        QString curText = resultText.mid(segment.indexStart, segment.length);
         int curTextWidth = fontMetrics.horizontalAdvance(curText);
         curRect = QRect(textRect.topLeft(), QSize(curTextWidth, textRect.height()));
         painter->setPen(segment.textColor.isValid() ? segment.textColor : defaultTextColor);

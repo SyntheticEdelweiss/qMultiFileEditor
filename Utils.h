@@ -14,6 +14,12 @@
     static_cast<std::underlying_type<decltype(enumValue)>::type>(enumValue)
 #endif
 
+constexpr QFileDevice::Permissions allPermissions =
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+        QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ExeGroup |
+        QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther |
+        QFileDevice::ReadUser | QFileDevice::WriteUser | QFileDevice::ExeUser;
+
 #define g_presetsPath "../etc/qMultiFileEditor_Presets.ini"
 #define g_settingsPath "../etc/qMultiFileEditor_Settings.ini"
 
