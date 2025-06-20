@@ -1,20 +1,12 @@
-#ifndef MULTIFILEEDITOR_H
-#define MULTIFILEEDITOR_H
+#pragma once
+
+#include <array>
+
+#include <QtCore/QDir>
 
 #include "Utils.h"
 #include "ui_MultiFileEditor.h"
 
-#include <functional>
-#include <stdexcept>
-#include <array>
-
-#include <QtCore/QDir>
-#include <QtCore/QHash>
-#include <QtCore/QSettings>
-#include <QtCore/QStringList>
-#include <QtCore/QTextStream>
-#include <QtWidgets/QFileDialog>
-#include <QtWidgets/QMessageBox>
 
 struct FileDirEntry
 {
@@ -43,11 +35,15 @@ private:
 
     QHash<QString, MFEPreset> m_presetMap;
 
+    bool isRecursive = false;
+    bool isHighlight = false;
+    Qt::CaseSensitivity caseSensitivity = Qt::CaseInsensitive;
+
 private:
-    QTreeWidgetItem* searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, bool isRecursive);
-    QTreeWidgetItem* searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceString, bool isRecursive);
-    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString, bool isRecursive);
-    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString, bool isRecursive, Qt::CaseSensitivity caseSensitivity);
+    QTreeWidgetItem* searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp);
+    QTreeWidgetItem* searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceString);
+    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString);
+    QList<QTreeWidgetItem*> searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString);
     bool removeDirRecursively(QDir targetDir);
 
 private slots:
@@ -62,13 +58,14 @@ private slots:
     void savePreset();
     void removePreset();
     void fillPreset(const QString& presetName);
+    void loadSettings();
     void loadAllPresets();
 
     void reset();
     void execute();
 
+    void closeEvent(QCloseEvent* event) final;
+
 private:
     Ui::MultiFileEditor *ui;
 };
-
-#endif // MULTIFILEEDITOR_H

@@ -1,5 +1,16 @@
 #include "MultiFileEditor.h"
 
+#include <functional>
+
+#include <QtCore/QRegularExpression>
+#include <QtCore/QSettings>
+#include <QtCore/QTextStream>
+#include <QtWidgets/QFileDialog>
+#include <QtWidgets/QMessageBox>
+
+#include "MulticolorDelegate.h"
+
+
 // #ifdef Q_OS_WIN
 // #include "aclapi.h" // https://stackoverflow.com/questions/5021645/qt-setpermissions-not-setting-permisions
 // #endif
@@ -12,6 +23,8 @@ MultiFileEditor::MultiFileEditor(QWidget* parent)
 {
     QApplication::setApplicationName("qMultiFileEditor");
     ui->setupUi(this);
+    MulticolorDelegateV2* delegate = new MulticolorDelegateV2(ui->treeWidget_results);
+    ui->treeWidget_results->setItemDelegate(delegate);
 
     ui->comboBox_actionType->clear();
     ui->comboBox_actionType->addItem("Remove", static_cast<int>(ActionType::Remove));
@@ -23,6 +36,7 @@ MultiFileEditor::MultiFileEditor(QWidget* parent)
     ui->comboBox_actionTarget->addItem("Files & Directories", static_cast<int>(ActionTarget::FilesDirs));
     ui->comboBox_actionTarget->addItem("File contents", static_cast<int>(ActionTarget::FileContents));
 
+    loadSettings();
     loadAllPresets();
     ui->comboBox_presets->setCurrentIndex(-1);
 
@@ -35,11 +49,11 @@ MultiFileEditor::MultiFileEditor(QWidget* parent)
     connect(ui->pushButton_reset,           &QPushButton::clicked, this, &MultiFileEditor::reset);
     connect(ui->pushButton_execute,         &QPushButton::clicked, this, &MultiFileEditor::execute);
     // TODO: optimize to omit excessive rechecking?
-    connect(ui->lineEdit_dirPath,     &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
+    connect(ui->lineEdit_dirPath,       &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_filePattern,   &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_searchFor,     &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
     connect(ui->lineEdit_replaceWith,   &QLineEdit::editingFinished, this, &MultiFileEditor::checkAllValidity);
-    connect(ui->checkBox_isRegExpFilePattern,      &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
+    connect(ui->checkBox_isRegExpFilePattern,   &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
     connect(ui->checkBox_isRegExpSearchReplace, &QCheckBox::clicked, this, &MultiFileEditor::checkAllValidity);
 
     onActionCombosActivated();
@@ -47,6 +61,30 @@ MultiFileEditor::MultiFileEditor(QWidget* parent)
 
 MultiFileEditor::~MultiFileEditor()
 {
+    QSettings settingsFile(g_settingsPath, QSettings::IniFormat, this);
+    // save last preset
+    settingsFile.beginGroup("LastPreset");
+    settingsFile.setValue("action_type", ui->comboBox_actionType->currentData(Qt::UserRole));
+    settingsFile.setValue("action_target", ui->comboBox_actionTarget->currentData(Qt::UserRole));
+    settingsFile.setValue("recursive", ui->checkBox_isRecursive->isChecked());
+    settingsFile.setValue("case_sensitive", ui->checkBox_isCaseSensitive->isChecked());
+    settingsFile.setValue("autoconfirm_execute", ui->checkBox_isAutoconfirmExecute->isChecked());
+    settingsFile.setValue("re_file_pattern", ui->checkBox_isRegExpFilePattern->isChecked());
+    settingsFile.setValue("re_search_replace", ui->checkBox_isRegExpSearchReplace->isChecked());
+    settingsFile.setValue("highlight_match", ui->checkBox_isHighlightMatch->isChecked());
+    settingsFile.setValue("dir_path", ui->lineEdit_dirPath->text());
+    settingsFile.setValue("file_pattern", ui->lineEdit_filePattern->text());
+    settingsFile.setValue("search_for", ui->lineEdit_searchFor->text());
+    settingsFile.setValue("replace_with", ui->lineEdit_replaceWith->text());
+    settingsFile.endGroup();
+    // save last settings
+    settingsFile.beginGroup("LastSettings");
+    settingsFile.setValue("x", this->x());
+    settingsFile.setValue("y", this->y());
+    settingsFile.setValue("width", this->width());
+    settingsFile.setValue("height", this->height());
+    settingsFile.endGroup();
+
     delete ui;
 }
 
@@ -110,6 +148,7 @@ void MultiFileEditor::getExistingDirectory()
         this, "Pick a directory", startingPath, QFileDialog::ShowDirsOnly);
     if (QDir(dirPath).exists())
         ui->lineEdit_dirPath->setText(dirPath);
+    emit ui->lineEdit_dirPath->editingFinished();
     return;
 }
 
@@ -266,14 +305,15 @@ void MultiFileEditor::fillPreset(const QString& presetName)
 {
     MFEPreset& preset = m_presetMap[presetName]; // TODO: safer to use .find() ?
     ui->comboBox_actionType->setCurrentIndex(ui->comboBox_actionType->findData(preset.actionType, Qt::UserRole));
-    ui->comboBox_actionTarget->currentData(ui->comboBox_actionTarget->findData(preset.actionTarget, Qt::UserRole));
+    ui->comboBox_actionTarget->setCurrentIndex(ui->comboBox_actionTarget->findData(preset.actionTarget, Qt::UserRole));
     ui->checkBox_isRecursive->setChecked(preset.isRecursive);
     ui->checkBox_isCaseSensitive->setChecked(preset.isCaseSensitive);
     ui->checkBox_isAutoconfirmExecute->setChecked(preset.isAutoconfirmExecute);
     ui->checkBox_isRegExpFilePattern->setChecked(preset.isRegExpFilePattern);
     ui->checkBox_isRegExpSearchReplace->setChecked(preset.isRegExpSearchReplace);
     ui->checkBox_isHighlightMatch->setChecked(preset.isHighlightMatch);
-    ui->lineEdit_dirPath->setText(preset.dirPath);
+    if (!preset.dirPath.isEmpty())
+        ui->lineEdit_dirPath->setText(preset.dirPath);
     ui->lineEdit_filePattern->setText(preset.filePattern);
     ui->lineEdit_searchFor->setText(preset.searchFor);
     ui->lineEdit_replaceWith->setText(preset.replaceWith);
@@ -281,12 +321,41 @@ void MultiFileEditor::fillPreset(const QString& presetName)
     return;
 }
 
+void MultiFileEditor::loadSettings()
+{
+    QSettings settingsFile(g_settingsPath, QSettings::IniFormat, this);
+
+    settingsFile.beginGroup("LastSettings");
+    int x = settingsFile.value("x").toInt();
+    int y = settingsFile.value("y").toInt();
+    int width = settingsFile.value("width").toInt();
+    int height = settingsFile.value("height").toInt();
+    this->setGeometry(x, y, width, height);
+    settingsFile.endGroup();
+
+    settingsFile.beginGroup("LastPreset");
+    ui->comboBox_actionType->setCurrentIndex(ui->comboBox_actionType->findData(settingsFile.value("action_type").toInt(), Qt::UserRole));
+    ui->comboBox_actionTarget->setCurrentIndex(ui->comboBox_actionTarget->findData(settingsFile.value("action_target").toInt(), Qt::UserRole));
+    ui->checkBox_isRecursive->setChecked(settingsFile.value("recursive").toBool());
+    ui->checkBox_isCaseSensitive->setChecked(settingsFile.value("case_sensitive").toBool());
+    ui->checkBox_isAutoconfirmExecute->setChecked(settingsFile.value("autoconfirm_execute").toBool());
+    ui->checkBox_isRegExpFilePattern->setChecked(settingsFile.value("re_file_pattern").toBool());
+    ui->checkBox_isRegExpSearchReplace->setChecked(settingsFile.value("autoconfirm_execute").toBool());
+    ui->checkBox_isHighlightMatch->setChecked(settingsFile.value("highlight_match").toBool());
+    ui->lineEdit_dirPath->setText(settingsFile.value("dir_path").toString());
+    ui->lineEdit_filePattern->setText(settingsFile.value("file_pattern").toString());
+    ui->lineEdit_searchFor->setText(settingsFile.value("search_for").toString());
+    ui->lineEdit_replaceWith->setText(settingsFile.value("replace_with").toString());
+    onActionCombosActivated();
+    settingsFile.endGroup();
+}
+
 void MultiFileEditor::loadAllPresets()
 {
     QSettings presetsFile(g_presetsPath, QSettings::IniFormat, this);
     QStringList presets = presetsFile.childGroups();
     std::sort(presets.begin(), presets.end());
-    for (const QString& curPresetName : presets)
+    for (const QString& curPresetName : qAsConst(presets))
     {
         presetsFile.beginGroup(curPresetName);
         MFEPreset& curPreset = m_presetMap[curPresetName];
@@ -325,6 +394,7 @@ void MultiFileEditor::execute()
 {
     ActionType actionType = static_cast<ActionType>(ui->comboBox_actionType->currentData(Qt::UserRole).toInt());
     ActionTarget actionTarget = static_cast<ActionTarget>(ui->comboBox_actionTarget->currentData(Qt::UserRole).toInt());
+
     if (m_isSearchDone) // execute action
     {
         if (ui->checkBox_isAutoconfirmExecute->isChecked() == false)
@@ -429,7 +499,9 @@ void MultiFileEditor::execute()
                         }
                         else
                         {
-                            bool isOk = QDir(entryFileInfo.canonicalPath()).remove(entryFileInfo.fileName());
+                            QFile fileToRemove = entryFileInfo.canonicalFilePath();
+                            fileToRemove.setPermissions(allPermissions);
+                            const bool isOk = fileToRemove.remove();
                             if (isOk)
                             {
                                 ++fileSuccessCount;
@@ -543,14 +615,15 @@ void MultiFileEditor::execute()
         m_fileDirEntryMap.clear();
         m_fileContentsEntryMap.clear();
 
+        isRecursive = ui->checkBox_isRecursive->isChecked();
+        isHighlight = ui->checkBox_isHighlightMatch->isChecked();
+        caseSensitivity = ui->checkBox_isCaseSensitive->isChecked() ? Qt::CaseSensitive : Qt::CaseInsensitive;
+        QDir targetDir(ui->lineEdit_dirPath->text());
+
         if (actionTarget == ActionTarget::FileContents)
         {
-            if (actionType == ActionType::Remove)
+            if (actionType == ActionType::Remove || actionType == ActionType::Replace)
             {
-                QDir targetDir(ui->lineEdit_dirPath->text());
-                bool isRecursive = ui->checkBox_isRecursive->isChecked();
-                Qt::CaseSensitivity caseSensitivity = ui->checkBox_isCaseSensitive->isChecked() ? Qt::CaseSensitive : Qt::CaseInsensitive;
-
                 QRegularExpression filePatternRegExp;
                 QString filePatternString = ui->lineEdit_filePattern->text();
                 if (ui->checkBox_isRegExpFilePattern->isChecked() == false)
@@ -559,39 +632,18 @@ void MultiFileEditor::execute()
                 if (ui->checkBox_isCaseSensitive->isChecked() == false)
                     filePatternRegExp.setPatternOptions(filePatternRegExp.patternOptions() | QRegularExpression::CaseInsensitiveOption);
 
+                QString replaceString = (actionType == ActionType::Remove) ? QString() : ui->lineEdit_replaceWith->text();
                 if (ui->checkBox_isRegExpSearchReplace->isChecked())
                 {
                     QRegularExpression searchRegExp(ui->lineEdit_searchFor->text());
                     if (ui->checkBox_isCaseSensitive->isChecked() == false)
                         searchRegExp.setPatternOptions(searchRegExp.patternOptions() | QRegularExpression::CaseInsensitiveOption);
-                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, searchRegExp, QString(), isRecursive));
+                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, searchRegExp, replaceString));
                 }
                 else
-                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, ui->lineEdit_searchFor->text(), QString(), isRecursive, caseSensitivity));
-            }
-            else if (actionType == ActionType::Replace)
-            {
-                QDir targetDir(ui->lineEdit_dirPath->text());
-                bool isRecursive = ui->checkBox_isRecursive->isChecked();
-                Qt::CaseSensitivity caseSensitivity = ui->checkBox_isCaseSensitive->isChecked() ? Qt::CaseSensitive : Qt::CaseInsensitive;
-
-                QRegularExpression filePatternRegExp;
-                QString filePatternString = ui->lineEdit_filePattern->text();
-                if (ui->checkBox_isRegExpFilePattern->isChecked() == false)
-                    filePatternString = regExpFromWildcardFilters(filePatternString);
-                filePatternRegExp.setPattern(filePatternString);
-                if (ui->checkBox_isCaseSensitive->isChecked() == false)
-                    filePatternRegExp.setPatternOptions(filePatternRegExp.patternOptions() | QRegularExpression::CaseInsensitiveOption);
-
-                if (ui->checkBox_isRegExpSearchReplace->isChecked())
                 {
-                    QRegularExpression searchRegExp(ui->lineEdit_searchFor->text());
-                    if (ui->checkBox_isCaseSensitive->isChecked() == false)
-                        searchRegExp.setPatternOptions(searchRegExp.patternOptions() | QRegularExpression::CaseInsensitiveOption);
-                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, searchRegExp, ui->lineEdit_replaceWith->text(), isRecursive));
+                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, ui->lineEdit_searchFor->text(), replaceString));
                 }
-                else
-                    ui->treeWidget_results->addTopLevelItems(searchFileContentsToReplace(targetDir, filePatternRegExp, ui->lineEdit_searchFor->text(), ui->lineEdit_replaceWith->text(), isRecursive, caseSensitivity));
             }
             else
             {
@@ -608,9 +660,7 @@ void MultiFileEditor::execute()
         {
             if (actionType == ActionType::Remove)
             {
-                QDir targetDir(ui->lineEdit_dirPath->text());
                 QDir::Filters filters = QDir::NoDotAndDotDot | static_cast<QDir::Filters>(static_cast<int>(actionTarget));
-                bool isRecursive = ui->checkBox_isRecursive->isChecked();
 
                 QTreeWidgetItem* pRootItem = nullptr;
                 QRegularExpression regExp;
@@ -625,7 +675,7 @@ void MultiFileEditor::execute()
                 if (regExpPattern.isEmpty())
                     pRootItem = new QTreeWidgetItem;
                 else
-                    pRootItem = searchFileDirToRemove(targetDir, filters, regExp, isRecursive);
+                    pRootItem = searchFileDirToRemove(targetDir, filters, regExp);
                 pRootItem->setData(0, Qt::DisplayRole, targetDir.canonicalPath());
                 pRootItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
                 m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pRootItem), {false, QFileInfo(targetDir.canonicalPath())});
@@ -633,9 +683,7 @@ void MultiFileEditor::execute()
             }
             else if (actionType == ActionType::Replace)
             {
-                QDir targetDir(ui->lineEdit_dirPath->text());
                 QDir::Filters filters = QDir::NoDotAndDotDot | static_cast<QDir::Filters>(static_cast<int>(actionTarget));
-                bool isRecursive = ui->checkBox_isRecursive->isChecked();
 
                 QTreeWidgetItem* pRootItem = nullptr;
                 QRegularExpression regExp;
@@ -647,7 +695,7 @@ void MultiFileEditor::execute()
                 if (regExpPattern.isEmpty())
                     pRootItem = new QTreeWidgetItem;
                 else
-                    pRootItem = searchFileDirToReplace(targetDir, filters, regExp, ui->lineEdit_replaceWith->text(), isRecursive);
+                    pRootItem = searchFileDirToReplace(targetDir, filters, regExp, ui->lineEdit_replaceWith->text());
                 pRootItem->setData(0, Qt::DisplayRole, targetDir.canonicalPath());
                 pRootItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
                 m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pRootItem), {false, QFileInfo(targetDir.canonicalPath())});
@@ -684,7 +732,13 @@ void MultiFileEditor::execute()
     return;
 }
 
-QTreeWidgetItem* MultiFileEditor::searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, bool isRecursive)
+void MultiFileEditor::closeEvent(QCloseEvent* event)
+{
+    this->deleteLater();
+    QWidget::closeEvent(event);
+}
+
+QTreeWidgetItem* MultiFileEditor::searchFileDirToRemove(QDir targetDir, QDir::Filters filters, QRegularExpression regExp)
 {
     QTreeWidgetItem* retItem = new QTreeWidgetItem;
     bool isDeleteDirs = ((filters & QDir::Dirs) == QDir::Dirs);
@@ -695,23 +749,32 @@ QTreeWidgetItem* MultiFileEditor::searchFileDirToRemove(QDir targetDir, QDir::Fi
     QList<QFileInfo> allFileDirs = targetDir.entryInfoList(nameFilters, filters, sortFlags);
 
     auto iter = allFileDirs.begin();
-    // entryInfoList is guaranteed to only contain dirs and\or files (as set by filters)
-    // and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
+    // entryInfoList is guaranteed to only contain dirs and\or files (as set by filters) and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
     if (isDeleteDirs || isRecursive)
+    {
         for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
         {
-            if (isDeleteDirs && regExp.match(iter->fileName()).hasMatch())
+            // first check if entry is subject to deletion; true -> no need for recursive call since whole dir will be deleted -> continue
+            if (isDeleteDirs)
             {
-                QTreeWidgetItem* pChildItem = new QTreeWidgetItem;
-                pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
-                pChildItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
-                pChildItem->setCheckState(0, Qt::Checked);
-                retItem->addChild(pChildItem);
-                m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
+                auto reMatch = regExp.match(iter->fileName());
+                if (reMatch.hasMatch())
+                {
+                    QTreeWidgetItem* pChildItem = new QTreeWidgetItem;
+                    if (isHighlight)
+                        pChildItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(iter->fileName(), 0, regExp, reMatch.capturedStart(0), Qt::yellow)));
+                    else
+                        pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
+                    pChildItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
+                    pChildItem->setCheckState(0, Qt::Checked);
+                    retItem->addChild(pChildItem);
+                    m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
+                    goto goto_nextDirEntry;
+                }
             }
-            else if (isRecursive)
+            if (isRecursive)
             {
-                QTreeWidgetItem* pChildItem = searchFileDirToRemove(QDir(iter->canonicalFilePath()), filters, regExp, isRecursive);
+                QTreeWidgetItem* pChildItem = searchFileDirToRemove(QDir(iter->canonicalFilePath()), filters, regExp);
                 if (pChildItem->childCount() != 0)
                 {
                     pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
@@ -719,26 +782,38 @@ QTreeWidgetItem* MultiFileEditor::searchFileDirToRemove(QDir targetDir, QDir::Fi
                     retItem->addChild(pChildItem);
                 }
                 else
+                {
                     delete pChildItem;
+                }
             }
+goto_nextDirEntry: continue;
         }
+    }
 
     // and it's guaranteed that only files will be from here on out
     if (isDeleteFiles)
+    {
         for (; iter != allFileDirs.end(); ++iter)
-            if (regExp.match(iter->fileName()).hasMatch())
+        {
+            auto reMatch = regExp.match(iter->fileName());
+            if (reMatch.hasMatch())
             {
                 QTreeWidgetItem* pChildItem = new QTreeWidgetItem;
-                pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
+                if (isHighlight)
+                    pChildItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(iter->fileName(), 0, regExp, reMatch.capturedStart(0), Qt::yellow)));
+                else
+                    pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
                 pChildItem->setIcon(0, QIcon(":/Icons/file_12x15.png"));
                 pChildItem->setCheckState(0, Qt::Checked);
                 retItem->addChild(pChildItem);
                 m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
             }
+        }
+    }
     return retItem;
 }
 
-QTreeWidgetItem* MultiFileEditor::searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceWith, bool isRecursive)
+QTreeWidgetItem* MultiFileEditor::searchFileDirToReplace(QDir targetDir, QDir::Filters filters, QRegularExpression regExp, QString replaceWith)
 {
     QTreeWidgetItem* retItem = new QTreeWidgetItem;
     bool isRenameDirs = ((filters & QDir::Dirs) == QDir::Dirs);
@@ -749,15 +824,15 @@ QTreeWidgetItem* MultiFileEditor::searchFileDirToReplace(QDir targetDir, QDir::F
     QList<QFileInfo> allFileDirs = targetDir.entryInfoList(nameFilters, filters, sortFlags);
 
     auto iter = allFileDirs.begin();
-    // entryInfoList is guaranteed to only contain dirs and\or files (as set by filters)
-    // and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
+    // entryInfoList is guaranteed to only contain dirs and\or files (as set by filters) and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
     if (isRenameDirs || isRecursive)
+    {
         for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
         {
             QTreeWidgetItem* pChildItem = nullptr;
             if (isRecursive)
             {
-                pChildItem = searchFileDirToReplace(QDir(iter->canonicalFilePath()), filters, regExp, replaceWith, isRecursive);
+                pChildItem = searchFileDirToReplace(QDir(iter->canonicalFilePath()), filters, regExp, replaceWith);
                 if (pChildItem->childCount() == 0)
                 {
                     delete pChildItem;
@@ -770,38 +845,54 @@ QTreeWidgetItem* MultiFileEditor::searchFileDirToReplace(QDir targetDir, QDir::F
                     retItem->addChild(pChildItem);
                 }
             }
-            if (isRenameDirs && regExp.match(iter->fileName()).hasMatch())
+            if (isRenameDirs)
             {
-                if (pChildItem == nullptr)
+                auto reMatch = regExp.match(iter->fileName());
+                if (reMatch.hasMatch())
                 {
-                    pChildItem = new QTreeWidgetItem;
-                    pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
-                    pChildItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
-                    retItem->addChild(pChildItem);
+                    if (pChildItem == nullptr)
+                    {
+                        pChildItem = new QTreeWidgetItem;
+                        if (isHighlight)
+                            pChildItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(iter->fileName(), 0, regExp, reMatch.capturedStart(0), Qt::yellow)));
+                        else
+                            pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
+                        pChildItem->setIcon(0, QIcon(":/Icons/folder_15x15.png"));
+                        retItem->addChild(pChildItem);
+                    }
+                    pChildItem->setData(1, Qt::DisplayRole, iter->fileName().replace(regExp, replaceWith));
+                    pChildItem->setCheckState(0, Qt::Checked);
+                    m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
                 }
-                pChildItem->setData(1, Qt::DisplayRole, iter->fileName().replace(regExp, replaceWith));
-                pChildItem->setCheckState(0, Qt::Checked);
-                m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
             }
         }
+    }
 
     // and it's guaranteed that only files will be from here on out
     if (isRenameFiles)
+    {
         for (; iter != allFileDirs.end(); ++iter)
-            if (regExp.match(iter->fileName()).hasMatch())
+        {
+            auto reMatch = regExp.match(iter->fileName());
+            if (reMatch.hasMatch())
             {
                 QTreeWidgetItem* pChildItem = new QTreeWidgetItem;
-                pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
+                if (isHighlight)
+                    pChildItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(iter->fileName(), 0, regExp, reMatch.capturedStart(0), Qt::yellow)));
+                else
+                    pChildItem->setData(0, Qt::DisplayRole, iter->fileName());
                 pChildItem->setData(1, Qt::DisplayRole, iter->fileName().replace(regExp, replaceWith));
                 pChildItem->setIcon(0, QIcon(":/Icons/file_12x15.png"));
                 pChildItem->setCheckState(0, Qt::Checked);
                 retItem->addChild(pChildItem);
                 m_fileDirEntryMap.insert(reinterpret_cast<uintptr_t>(pChildItem), {true, *iter});
             }
+        }
+    }
     return retItem;
 }
 
-QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString, bool isRecursive)
+QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QRegularExpression searchRegExp, QString replaceString)
 {
     QList<QTreeWidgetItem*> retList;
     QStringList nameFilters({"*"});
@@ -810,17 +901,22 @@ QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir target
     QList<QFileInfo> allFileDirs = targetDir.entryInfoList(nameFilters, filters, sortFlags);
 
     auto iter = allFileDirs.begin();
-    // entryInfoList is guaranteed to only contain dirs and files (as set by filters)
-    // and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
+    // entryInfoList is guaranteed to only contain dirs and files (as set by filters) and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
     if (isRecursive)
+    {
         for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
-            retList.append(searchFileContentsToReplace(iter->canonicalFilePath(), filePatternRegExp, searchRegExp, replaceString, isRecursive));
+            retList.append(searchFileContentsToReplace(iter->canonicalFilePath(), filePatternRegExp, searchRegExp, replaceString));
+    }
     else
-        while ((iter != allFileDirs.end()) && iter->isDir())
-            ++iter;
+    {
+        // increment iter to skip all dirs
+        for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
+            continue;
+    }
 
     // and it's guaranteed that only files will be from here on out
     for (; iter != allFileDirs.end(); ++iter)
+    {
         if (filePatternRegExp.match(iter->fileName()).hasMatch())
         {
             QTreeWidgetItem* pFileItem = new QTreeWidgetItem;
@@ -842,13 +938,16 @@ QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir target
             while (!fileStream.atEnd())
             {
                 QString line = fileStream.readLine();
-                if (searchRegExp.match(line).hasMatch())
+                auto reMatch = searchRegExp.match(line);
+                if (reMatch.hasMatch())
                 {
                     QTreeWidgetItem* pLineItem = new QTreeWidgetItem;
                     QString postReplaceLine = line;
                     postReplaceLine.replace(searchRegExp, replaceString);
-                    pLineItem->setData(0, Qt::DisplayRole, line);
-                    pLineItem->setData(0, Qt::UserRole, lineIdx);
+                    if (isHighlight)
+                        pLineItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(line, lineIdx, searchRegExp, reMatch.capturedStart(0))));
+                    else
+                        pLineItem->setData(0, Qt::UserRole, QVariant::fromValue(ColoredText(line, lineIdx, searchRegExp, reMatch.capturedStart(0), QColor(), QColor())));
                     pLineItem->setData(1, Qt::DisplayRole, postReplaceLine);
                     pLineItem->setCheckState(0, Qt::Checked);
                     pFileItem->addChild(pLineItem);
@@ -869,10 +968,11 @@ QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir target
                 delete pFileItem;
             }
         }
+    }
     return retList;
 }
 
-QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString, bool isRecursive, Qt::CaseSensitivity caseSensitivity)
+QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir targetDir, QRegularExpression filePatternRegExp, QString searchString, QString replaceString)
 {
     QList<QTreeWidgetItem*> retList;
     QStringList nameFilters({"*"});
@@ -884,11 +984,16 @@ QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir target
     // entryInfoList is guaranteed to only contain dirs and files (as set by filters)
     // and it's guaranteed that all dirs will be placed before files (as set by sortFlags)
     if (isRecursive)
+    {
         for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
-            retList.append(searchFileContentsToReplace(iter->canonicalFilePath(), filePatternRegExp, searchString, replaceString, isRecursive, caseSensitivity));
+            retList.append(searchFileContentsToReplace(iter->canonicalFilePath(), filePatternRegExp, searchString, replaceString));
+    }
     else
-        while ((iter != allFileDirs.end()) && iter->isDir())
-            ++iter;
+    {
+        // increment iter to skip all dirs
+        for (; (iter != allFileDirs.end()) && iter->isDir(); ++iter)
+            continue;
+    }
 
     // and it's guaranteed that only files will be from here on out
     for (; iter != allFileDirs.end(); ++iter)
@@ -913,13 +1018,21 @@ QList<QTreeWidgetItem*> MultiFileEditor::searchFileContentsToReplace(QDir target
             while (!fileStream.atEnd())
             {
                 QString line = fileStream.readLine();
-                if (line.contains(searchString, caseSensitivity))
+                int index = line.indexOf(searchString, 0, caseSensitivity);
+                if (index != -1)
                 {
                     QTreeWidgetItem* pLineItem = new QTreeWidgetItem;
                     QString postReplaceLine = line;
                     postReplaceLine.replace(searchString, replaceString, caseSensitivity);
-                    pLineItem->setData(0, Qt::DisplayRole, line);
-                    pLineItem->setData(0, Qt::UserRole, lineIdx);
+                    ColoredText ctext;
+                    ctext.text = line;
+                    ctext.lineNumber = lineIdx;
+                    if (isHighlight)
+                        ctext.segments.append(ColoredSegment(index, searchString.length(), Qt::yellow, Qt::black));
+                    else
+                        ctext.segments.append(ColoredSegment(0, line.length(), QColor(), QColor()));
+                    ctext.normalize();
+                    pLineItem->setData(0, Qt::UserRole, QVariant::fromValue(ctext));
                     pLineItem->setData(1, Qt::DisplayRole, postReplaceLine);
                     pLineItem->setCheckState(0, Qt::Checked);
                     pFileItem->addChild(pLineItem);
@@ -954,16 +1067,16 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
     {
         if (iter->isDir())
         {
-            removeDirRecursively(iter->canonicalPath());
+            removeDirRecursively(iter->canonicalFilePath());
         }
         else
         {
-//            #ifdef Q_OS_WIN // https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights
-//            SetNamedSecurityInfoA(entry.absoluteFilePath(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, NULL, NULL);
-//            #endif
+#ifdef Q_OS_WIN // https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights
+            // SetNamedSecurityInfoA(entry.absoluteFilePath(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, NULL, NULL);
+#endif
             QFile fileToRemove(iter->canonicalFilePath());
             // If fails on Windows, check https://doc.qt.io/qt-5.15/qfileinfo.html#ntfs-permissions
-            fileToRemove.setPermissions(QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther);
+            fileToRemove.setPermissions(allPermissions);
             fileToRemove.remove();
         }
     }    
