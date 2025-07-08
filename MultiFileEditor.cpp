@@ -146,7 +146,7 @@ void MultiFileEditor::getExistingDirectory()
         startingPath = QDir::currentPath();
     QString dirPath = QFileDialog::getExistingDirectory(
         this, "Pick a directory", startingPath, QFileDialog::ShowDirsOnly);
-    if (QDir(dirPath).exists())
+    if (!dirPath.isEmpty() && QDir(dirPath).exists())
         ui->lineEdit_dirPath->setText(dirPath);
     emit ui->lineEdit_dirPath->editingFinished();
     return;
