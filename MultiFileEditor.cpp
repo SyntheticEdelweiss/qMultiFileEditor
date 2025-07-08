@@ -485,7 +485,8 @@ void MultiFileEditor::execute()
                         auto entryFileInfo = mapIter.value().fileInfo;
                         if (entryFileInfo.isDir())
                         {
-                            bool isOk = removeDirRecursively(QDir(entryFileInfo.canonicalFilePath()));
+                            // const bool isOk = removeDirRecursively(QDir(entryFileInfo.canonicalFilePath()));
+                            const bool isOk = QDir(entryFileInfo.canonicalFilePath()).removeRecursively(); // apparently it handles permissions just fine?
                             if (isOk)
                             {
                                 ++dirSuccessCount;
@@ -1059,6 +1060,7 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
 {
     if (targetDir.exists() == false)
         return false;
+    bool res = true;
     QStringList nameFilters({"*"});
     QDir::Filters filters = QDir::NoDotAndDotDot | QDir::AllDirs | QDir::Files | QDir::Hidden;
     QDir::SortFlags sortFlags = QDir::DirsFirst;
@@ -1067,7 +1069,7 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
     {
         if (iter->isDir())
         {
-            removeDirRecursively(iter->canonicalFilePath());
+            res &= removeDirRecursively(iter->canonicalFilePath());
         }
         else
         {
@@ -1077,8 +1079,9 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
             QFile fileToRemove(iter->canonicalFilePath());
             // If fails on Windows, check https://doc.qt.io/qt-5.15/qfileinfo.html#ntfs-permissions
             fileToRemove.setPermissions(allPermissions);
-            fileToRemove.remove();
+            res &= fileToRemove.remove();
         }
-    }    
-    return targetDir.rmdir(".");
+    }
+    res &= targetDir.removeRecursively();
+    return res;
 }
