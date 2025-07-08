@@ -10,12 +10,12 @@
 
 #include "MulticolorDelegate.h"
 
-
 // #ifdef Q_OS_WIN
 // #include "aclapi.h" // https://stackoverflow.com/questions/5021645/qt-setpermissions-not-setting-permisions
 // #endif
 
 #include <QtWidgets/QTextEdit>
+
 
 MultiFileEditor::MultiFileEditor(QWidget* parent)
     : QWidget(parent)
@@ -79,10 +79,11 @@ MultiFileEditor::~MultiFileEditor()
     settingsFile.endGroup();
     // save last settings
     settingsFile.beginGroup("LastSettings");
-    settingsFile.setValue("x", this->x());
-    settingsFile.setValue("y", this->y());
-    settingsFile.setValue("width", this->width());
-    settingsFile.setValue("height", this->height());
+    auto geo = this->geometry();
+    settingsFile.setValue("x", geo.x());
+    settingsFile.setValue("y", geo.y());
+    settingsFile.setValue("width", geo.width());
+    settingsFile.setValue("height", geo.height());
     settingsFile.endGroup();
 
     delete ui;
