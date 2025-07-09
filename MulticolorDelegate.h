@@ -134,7 +134,7 @@ struct LayoutInfo
     QRect pixmapRect;
     QRect textRect;
     QRect lineNumberRect;
-    QIcon icon;
+    QPixmap pixmap;
     Qt::CheckState checkState;
     QStyleOptionViewItem option;
 };
@@ -149,12 +149,15 @@ public:
     QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 
 private:
-    // Why is QItemDelegate::setOptions() a castrated version of QStyledItemDelegate::initStyleOption()? Because fuck Qt
+    // Why is QItemDelegate::setOptions() a castrated version of QStyledItemDelegate::initStyleOption() and not even virtual? Because fuck Qt
     QStyleOptionViewItem setOptions(const QModelIndex& index, const QStyleOptionViewItem& option) const;
-    std::pair<uint, QString> getLineNumberInfo(const QStyleOptionViewItem& option, const QModelIndex& index, const ColoredText& coloredText) const;
-    LayoutInfo getLayoutInfo(const QStyleOptionViewItem& option, const QModelIndex& index, const ColoredText& coloredText) const;
+    // QItemDelegate::drawDecoration checks if it has "cached" icon (QItemDelegatePrivate::tmp.icon) and draws it. Only clears cached icon when QItemDelegate::paint is called for index with no icon. And you can't force clear it as it's private.
+    // Either I'm missing something, or it's a genuinely retarded base class architecture that doesn't provide sufficient means for proper inheritance, and doesn't even tell you what you HAVE to do to avoid such dumb issues.
+    virtual void drawDecoration(QPainter *painter, const QStyleOptionViewItem &option, const QRect &rect, const QPixmap &pixmap) const final;
     int drawLineNumber(QPainter* painter, const QStyleOptionViewItem& option, const QRect& rect, const QModelIndex& index, const ColoredText& coloredText) const;
     void drawText(QPainter* painter, const QStyleOptionViewItem& option, const QRect& rect, const QModelIndex& index, const ColoredText& coloredText) const;
+    std::pair<uint, QString> getLineNumberInfo(const QStyleOptionViewItem& option, const QModelIndex& index, const ColoredText& coloredText) const;
+    LayoutInfo getLayoutInfo(const QStyleOptionViewItem& option, const QModelIndex& index, const ColoredText& coloredText) const;
 };
 
 // Class implementation is based on SearchResultTreeItemDelegate from QtCreator source code
