@@ -3,9 +3,6 @@
 #include <QtGui/QPainter>
 
 
-
-
-
 #define HORIZONTAL_MARGIN style->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, nullptr) + 1
 
 const int minimumLineNumberDigits = 6;
@@ -278,8 +275,8 @@ LayoutInfo MulticolorDelegateV2::getLayoutInfo(const QStyleOptionViewItem& optio
     }
 
     // icon
-    info.icon = index.data(Qt::DecorationRole).value<QIcon>();
-    if (!info.icon.isNull())
+    info.pixmap = QItemDelegate::decoration(option, index.data(Qt::DecorationRole));
+    if (!info.pixmap.isNull())
     {
         const QSize size = info.option.decorationSize;
         info.pixmapRect = QRect(0, 0, size.width(), size.height());
@@ -320,7 +317,7 @@ void MulticolorDelegateV2::paint(QPainter* painter, const QStyleOptionViewItem& 
 
     QItemDelegate::drawBackground(painter, opt, index);
     QItemDelegate::drawCheck(painter, opt, info.checkRect, info.checkState); // internally checks whether it's valid
-    QItemDelegate::drawDecoration(painter, opt, info.pixmapRect, QItemDelegate::decoration(opt, index.data(Qt::DecorationRole)));
+    drawDecoration(painter, opt, info.pixmapRect, info.pixmap);
     drawLineNumber(painter, opt, info.lineNumberRect, index, coloredText);
     drawText(painter, opt, info.textRect, index, coloredText);
     QItemDelegate::drawFocus(painter, opt, (info.lineNumberRect | info.textRect));
@@ -361,6 +358,19 @@ QSize MulticolorDelegateV2::sizeHint(const QStyleOptionViewItem& option, const Q
     resultSize.setWidth(resultSize.width() + frameHMargin);
 
     return resultSize;
+}
+
+void MulticolorDelegateV2::drawDecoration(QPainter *painter, const QStyleOptionViewItem &option, const QRect &rect, const QPixmap &pixmap) const
+{
+    if (pixmap.isNull() || !rect.isValid())
+        return;
+    QPoint p = QStyle::alignedRect(option.direction, option.decorationAlignment, pixmap.size(), rect).topLeft();
+    if (option.state & QStyle::State_Selected) {
+        const QPixmap pm = selectedPixmap(pixmap, option.palette, option.state & QStyle::State_Enabled);
+        painter->drawPixmap(p, pm);
+    } else {
+        painter->drawPixmap(p, pixmap);
+    }
 }
 
 // returns the width of the line number area

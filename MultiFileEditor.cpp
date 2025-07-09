@@ -10,12 +10,12 @@
 
 #include "MulticolorDelegate.h"
 
-
 // #ifdef Q_OS_WIN
 // #include "aclapi.h" // https://stackoverflow.com/questions/5021645/qt-setpermissions-not-setting-permisions
 // #endif
 
 #include <QtWidgets/QTextEdit>
+
 
 MultiFileEditor::MultiFileEditor(QWidget* parent)
     : QWidget(parent)
@@ -79,10 +79,11 @@ MultiFileEditor::~MultiFileEditor()
     settingsFile.endGroup();
     // save last settings
     settingsFile.beginGroup("LastSettings");
-    settingsFile.setValue("x", this->x());
-    settingsFile.setValue("y", this->y());
-    settingsFile.setValue("width", this->width());
-    settingsFile.setValue("height", this->height());
+    auto geo = this->geometry();
+    settingsFile.setValue("x", geo.x());
+    settingsFile.setValue("y", geo.y());
+    settingsFile.setValue("width", geo.width());
+    settingsFile.setValue("height", geo.height());
     settingsFile.endGroup();
 
     delete ui;
@@ -146,7 +147,7 @@ void MultiFileEditor::getExistingDirectory()
         startingPath = QDir::currentPath();
     QString dirPath = QFileDialog::getExistingDirectory(
         this, "Pick a directory", startingPath, QFileDialog::ShowDirsOnly);
-    if (QDir(dirPath).exists())
+    if (!dirPath.isEmpty() && QDir(dirPath).exists())
         ui->lineEdit_dirPath->setText(dirPath);
     emit ui->lineEdit_dirPath->editingFinished();
     return;
@@ -485,7 +486,8 @@ void MultiFileEditor::execute()
                         auto entryFileInfo = mapIter.value().fileInfo;
                         if (entryFileInfo.isDir())
                         {
-                            bool isOk = removeDirRecursively(QDir(entryFileInfo.canonicalFilePath()));
+                            // const bool isOk = removeDirRecursively(QDir(entryFileInfo.canonicalFilePath()));
+                            const bool isOk = QDir(entryFileInfo.canonicalFilePath()).removeRecursively(); // apparently it handles permissions just fine?
                             if (isOk)
                             {
                                 ++dirSuccessCount;
@@ -1059,6 +1061,7 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
 {
     if (targetDir.exists() == false)
         return false;
+    bool res = true;
     QStringList nameFilters({"*"});
     QDir::Filters filters = QDir::NoDotAndDotDot | QDir::AllDirs | QDir::Files | QDir::Hidden;
     QDir::SortFlags sortFlags = QDir::DirsFirst;
@@ -1067,7 +1070,7 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
     {
         if (iter->isDir())
         {
-            removeDirRecursively(iter->canonicalFilePath());
+            res &= removeDirRecursively(iter->canonicalFilePath());
         }
         else
         {
@@ -1077,8 +1080,9 @@ bool MultiFileEditor::removeDirRecursively(QDir targetDir)
             QFile fileToRemove(iter->canonicalFilePath());
             // If fails on Windows, check https://doc.qt.io/qt-5.15/qfileinfo.html#ntfs-permissions
             fileToRemove.setPermissions(allPermissions);
-            fileToRemove.remove();
+            res &= fileToRemove.remove();
         }
-    }    
-    return targetDir.rmdir(".");
+    }
+    res &= targetDir.removeRecursively();
+    return res;
 }
